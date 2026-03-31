@@ -58,8 +58,8 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
-                        docker.image("${BACKEND_IMAGE}:latest").push()
-                        docker.image("${FRONTEND_IMAGE}:latest").push()
+                       docker.build("${BACKEND_IMAGE}:latest", "ashwins-task-manager/backend")
+docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
                     }
                 }
             }
