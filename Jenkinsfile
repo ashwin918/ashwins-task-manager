@@ -27,12 +27,12 @@ pipeline {
                 script {
                     def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('SonarQube') {
-                        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        withCredentials([string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')]) {
                             bat """
                             ${scannerHome}\\bin\\sonar-scanner.bat ^
                             -Dsonar.projectKey=devboard-app ^
                             -Dsonar.sources=. ^
-                            -Dsonar.login=%SONAR_TOKEN%
+                            -Dsonar.token=%SONAR_TOKEN%
                             """
                         }
                     }
