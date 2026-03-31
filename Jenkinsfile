@@ -6,8 +6,8 @@ pipeline {
     }
 
     environment {
-        BACKEND_IMAGE  = "ashwinemcbalaji/devboard-backend"
-        FRONTEND_IMAGE = "ashwinemcbalaji/devboard-frontend"
+        BACKEND_IMAGE  = "ashwinbalaji22778/devboard-backend"
+        FRONTEND_IMAGE = "ashwinbalaji22778/devboard-frontend"
         DOCKERHUB_CREDENTIALS = "dockerhub-cred1"
 
         DATABASE_URL = "postgresql://postgres:password@host.docker.internal:5432/devboard"
@@ -16,12 +16,14 @@ pipeline {
 
     stages {
 
+        // ------------------ CHECKOUT ------------------
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
+        // ------------------ SONARQUBE ------------------
         stage('SonarQube Analysis') {
             steps {
                 script {
@@ -40,22 +42,17 @@ pipeline {
             }
         }
 
-        stage('Check Files') {
-            steps {
-                bat 'dir'
-            }
-        }
-
+        // ------------------ BUILD ------------------
         stage('Build Docker Images') {
             steps {
                 script {
-                    // Build and store images
                     backendImage = docker.build("${BACKEND_IMAGE}:latest", "ashwins-task-manager/backend")
                     frontendImage = docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
                 }
             }
         }
 
+        // ------------------ PUSH ------------------
         stage('Push to DockerHub') {
             steps {
                 script {
@@ -67,14 +64,15 @@ pipeline {
             }
         }
 
-        stage('Deploy Containers') {
+        // ------------------ DEPLOY ------------------
+        stage('Deploy Locally') {
             steps {
                 bat """
-                docker stop devboard-backend || echo "not running"
-                docker rm devboard-backend || echo "not exists"
+                docker stop devboard-backend || echo not running
+                docker rm devboard-backend || echo not exists
 
-                docker stop devboard-frontend || echo "not running"
-                docker rm devboard-frontend || echo "not exists"
+                docker stop devboard-frontend || echo not running
+                docker rm devboard-frontend || echo not exists
 
                 docker run -d -p 5000:5000 ^
                   -e PORT=%PORT% ^
@@ -87,6 +85,15 @@ pipeline {
                   ${FRONTEND_IMAGE}:latest
                 """
             }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ PIPELINE SUCCESS"
+        }
+        failure {
+            echo "❌ PIPELINE FAILED"
         }
     }
 }
