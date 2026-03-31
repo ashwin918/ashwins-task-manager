@@ -10,7 +10,7 @@ pipeline {
         FRONTEND_IMAGE = "ashwinbalaji22778/devboard-frontend"
         DOCKERHUB_CREDENTIALS = "dockerhub-cred1"
 
-        DATABASE_URL = "postgresql://postgres:password@host.docker.internal:5432/devboard"
+        DATABASE_URL = "postgresql://postgres:password@host.docker.internal:5432/ashwins_task_manager"
         PORT = "5000"
     }
 
