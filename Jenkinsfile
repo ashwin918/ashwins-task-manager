@@ -48,8 +48,8 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 script {
-                    docker.build("${BACKEND_IMAGE}:latest", "backend")
-                    docker.build("${FRONTEND_IMAGE}:latest", "frontend")
+                    docker.build("${BACKEND_IMAGE}:latest", "ashwins-task-manager/backend")
+                    docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
                 }
             }
         }
