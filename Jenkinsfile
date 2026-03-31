@@ -74,9 +74,7 @@ pipeline {
                 docker stop devboard-frontend || echo not running
                 docker rm devboard-frontend || echo not exists
 
-                docker run -d -p 5000:5000 ^
-                  -e PORT=%PORT% ^
-                  -e DATABASE_URL=%DATABASE_URL% ^
+                  -e JWT_SECRET=mysecret ^
                   --name devboard-backend ^
                   ${BACKEND_IMAGE}:latest
 
