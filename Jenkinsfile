@@ -27,9 +27,9 @@ pipeline {
                 script {
                     def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('SonarQube') {
-                        sh """
-                        ${scannerHome}/bin/sonar-scanner \
-                        -Dsonar.projectKey=devboard-app \
+                        bat """
+                        ${scannerHome}\\bin\\sonar-scanner.bat ^
+                        -Dsonar.projectKey=devboard-app ^
                         -Dsonar.sources=.
                         """
                     }
@@ -59,22 +59,22 @@ pipeline {
 
         stage('Deploy Containers') {
             steps {
-                sh '''
-                docker stop devboard-backend || true
-                docker rm devboard-backend || true
-                docker stop devboard-frontend || true
-                docker rm devboard-frontend || true
+                bat """
+                docker stop devboard-backend || exit 0
+                docker rm devboard-backend || exit 0
+                docker stop devboard-frontend || exit 0
+                docker rm devboard-frontend || exit 0
 
-                docker run -d -p 5000:5000 \
-                  -e PORT=5000 \
-                  -e DATABASE_URL=${DATABASE_URL} \
-                  --name devboard-backend \
+                docker run -d -p 5000:5000 ^
+                  -e PORT=%PORT% ^
+                  -e DATABASE_URL=%DATABASE_URL% ^
+                  --name devboard-backend ^
                   ${BACKEND_IMAGE}:latest
 
-                docker run -d -p 3000:80 \
-                  --name devboard-frontend \
+                docker run -d -p 3000:80 ^
+                  --name devboard-frontend ^
                   ${FRONTEND_IMAGE}:latest
-                '''
+                """
             }
         }
     }
