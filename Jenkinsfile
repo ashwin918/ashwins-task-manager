@@ -39,17 +39,19 @@ pipeline {
                 }
             }
         }
+
         stage('Check Files') {
-    steps {
-        bat 'dir'
-    }
-}
+            steps {
+                bat 'dir'
+            }
+        }
 
         stage('Build Docker Images') {
             steps {
                 script {
-                    docker.build("${BACKEND_IMAGE}:latest", "ashwins-task-manager/backend")
-                    docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
+                    // Build and store images
+                    backendImage = docker.build("${BACKEND_IMAGE}:latest", "ashwins-task-manager/backend")
+                    frontendImage = docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
                 }
             }
         }
@@ -57,9 +59,9 @@ pipeline {
         stage('Push to DockerHub') {
             steps {
                 script {
-                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
-                       docker.build("${BACKEND_IMAGE}:latest", "ashwins-task-manager/backend")
-docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
+                        backendImage.push()
+                        frontendImage.push()
                     }
                 }
             }
@@ -68,10 +70,11 @@ docker.build("${FRONTEND_IMAGE}:latest", "ashwins-task-manager/frontend")
         stage('Deploy Containers') {
             steps {
                 bat """
-                docker stop devboard-backend || exit 0
-                docker rm devboard-backend || exit 0
-                docker stop devboard-frontend || exit 0
-                docker rm devboard-frontend || exit 0
+                docker stop devboard-backend || echo "not running"
+                docker rm devboard-backend || echo "not exists"
+
+                docker stop devboard-frontend || echo "not running"
+                docker rm devboard-frontend || echo "not exists"
 
                 docker run -d -p 5000:5000 ^
                   -e PORT=%PORT% ^
