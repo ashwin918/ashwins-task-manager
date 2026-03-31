@@ -39,6 +39,11 @@ pipeline {
                 }
             }
         }
+        stage('Check Files') {
+    steps {
+        bat 'dir'
+    }
+}
 
         stage('Build Docker Images') {
             steps {
