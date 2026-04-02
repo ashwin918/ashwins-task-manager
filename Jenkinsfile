@@ -1,30 +1,20 @@
-Copy
-
 pipeline {
     agent any
  
-    // ─── Auto-trigger on every GitHub push ──────────────────────
     triggers {
         githubPush()
     }
  
     environment {
-        // DockerHub images — named after YOUR actual project
-        BACKEND_IMAGE  = "ashwinbalaji22778/task-manager-backend"
-        FRONTEND_IMAGE = "ashwinbalaji22778/task-manager-frontend"
- 
-        // Jenkins credential IDs (set these up in Jenkins → Manage Credentials)
-        DOCKERHUB_CREDENTIALS = "dockerhub-cred1"   // DockerHub username+password credential
-        SONAR_TOKEN_ID        = "sonar"              // SonarQube secret-text token credential
- 
-        // Container names — all scoped to your project, no leftover "devboard" names
-        BACKEND_CONTAINER  = "task-manager-backend"
-        FRONTEND_CONTAINER = "task-manager-frontend"
-        DB_CONTAINER       = "task-manager-db"
-        NETWORK_NAME       = "task-manager-net"
- 
-        // Each build gets a unique version tag
-        IMAGE_TAG = "${BUILD_NUMBER}"
+        BACKEND_IMAGE         = "ashwinbalaji22778/task-manager-backend"
+        FRONTEND_IMAGE        = "ashwinbalaji22778/task-manager-frontend"
+        DOCKERHUB_CREDENTIALS = "dockerhub-cred1"
+        SONAR_TOKEN_ID        = "sonar"
+        BACKEND_CONTAINER     = "task-manager-backend"
+        FRONTEND_CONTAINER    = "task-manager-frontend"
+        DB_CONTAINER          = "task-manager-db"
+        NETWORK_NAME          = "task-manager-net"
+        IMAGE_TAG             = "${BUILD_NUMBER}"
     }
  
     options {
@@ -35,28 +25,17 @@ pipeline {
  
     stages {
  
-        // ═══════════════════════════════════════════════════════
-        // STAGE 1 — CODE CHECKOUT
-        // ═══════════════════════════════════════════════════════
         stage('Checkout') {
             steps {
-                echo '📥 Checking out source code from GitHub...'
+                echo '📥 Checking out source code...'
                 checkout scm
-                sh '''
-                    echo "Branch : ${GIT_BRANCH}"
-                    echo "Commit : ${GIT_COMMIT}"
-                    echo "Build  : ${BUILD_NUMBER}"
-                    ls -la
-                '''
+                sh 'echo "Branch: ${GIT_BRANCH} | Commit: ${GIT_COMMIT} | Build: ${BUILD_NUMBER}"'
             }
         }
  
-        // ═══════════════════════════════════════════════════════
-        // STAGE 2 — SONARQUBE ANALYSIS
-        // ═══════════════════════════════════════════════════════
         stage('SonarQube Analysis') {
             steps {
-                echo '🔍 Running SonarQube static analysis...'
+                echo '🔍 Running SonarQube analysis...'
                 script {
                     def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('SonarQube') {
@@ -75,15 +54,12 @@ pipeline {
             }
         }
  
-        // ═══════════════════════════════════════════════════════
-        // STAGE 3 — BUILD DOCKER IMAGES (parallel)
-        // ═══════════════════════════════════════════════════════
         stage('Build Docker Images') {
             parallel {
  
                 stage('Build Backend') {
                     steps {
-                        echo '🔨 Building task-manager-backend image...'
+                        echo '🔨 Building task-manager-backend...'
                         sh """
                             docker build \
                               -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
@@ -95,7 +71,7 @@ pipeline {
  
                 stage('Build Frontend') {
                     steps {
-                        echo '🔨 Building task-manager-frontend image...'
+                        echo '🔨 Building task-manager-frontend...'
                         sh """
                             docker build \
                               -t ${FRONTEND_IMAGE}:${IMAGE_TAG} \
@@ -108,44 +84,33 @@ pipeline {
             }
         }
  
-        // ═══════════════════════════════════════════════════════
-        // STAGE 4 — PUSH TO DOCKERHUB
-        // ═══════════════════════════════════════════════════════
         stage('Push to DockerHub') {
             steps {
-                echo '📤 Pushing to DockerHub as ashwinbalaji22778...'
+                echo '📤 Pushing to DockerHub (ashwinbalaji22778)...'
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', "${DOCKERHUB_CREDENTIALS}") {
-                        // Backend — versioned tag + latest
                         def backendImg = docker.image("${BACKEND_IMAGE}:${IMAGE_TAG}")
                         backendImg.push()
                         backendImg.push('latest')
  
-                        // Frontend — versioned tag + latest
                         def frontendImg = docker.image("${FRONTEND_IMAGE}:${IMAGE_TAG}")
                         frontendImg.push()
                         frontendImg.push('latest')
                     }
                 }
-                echo "✅ Pushed ${BACKEND_IMAGE}:${IMAGE_TAG}"
-                echo "✅ Pushed ${FRONTEND_IMAGE}:${IMAGE_TAG}"
+                echo "✅ Pushed ${BACKEND_IMAGE}:${IMAGE_TAG} + ${FRONTEND_IMAGE}:${IMAGE_TAG}"
             }
         }
  
-        // ═══════════════════════════════════════════════════════
-        // STAGE 5 — DEPLOY via Docker Run
-        // ═══════════════════════════════════════════════════════
         stage('Deploy') {
             steps {
-                echo '🚀 Deploying Ashwins Task Manager containers...'
+                echo '🚀 Deploying Ashwins Task Manager...'
                 sh """
-                    # ── Create isolated network for this project ──────
                     docker network inspect ${NETWORK_NAME} >/dev/null 2>&1 || \
                         docker network create ${NETWORK_NAME}
  
-                    # ── Start Postgres only if not already running ────
                     if ! docker inspect ${DB_CONTAINER} >/dev/null 2>&1; then
-                        echo "Starting task-manager-db (PostgreSQL)..."
+                        echo "Starting task-manager-db..."
                         docker run -d \
                           --name ${DB_CONTAINER} \
                           --network ${NETWORK_NAME} \
@@ -156,23 +121,19 @@ pipeline {
                           -v task_manager_pgdata:/var/lib/postgresql/data \
                           postgres:15-alpine
                     else
-                        echo "task-manager-db already running — skipping."
+                        echo "task-manager-db already running."
                     fi
  
-                    # ── Wait until Postgres accepts connections ────────
-                    echo "Waiting for task-manager-db to be ready..."
+                    echo "Waiting for DB..."
                     for i in \$(seq 1 15); do
                         docker exec ${DB_CONTAINER} pg_isready -U postgres && break || sleep 3
                     done
  
-                    # ── Stop & remove old app containers ──────────────
                     docker stop  ${BACKEND_CONTAINER}  || true
                     docker rm    ${BACKEND_CONTAINER}  || true
                     docker stop  ${FRONTEND_CONTAINER} || true
                     docker rm    ${FRONTEND_CONTAINER} || true
  
-                    # ── Deploy Backend ────────────────────────────────
-                    echo "Starting task-manager-backend..."
                     docker run -d \
                       --name ${BACKEND_CONTAINER} \
                       --network ${NETWORK_NAME} \
@@ -188,8 +149,6 @@ pipeline {
                       -e JWT_SECRET=ashwins_task_manager_jwt_secret \
                       ${BACKEND_IMAGE}:${IMAGE_TAG}
  
-                    # ── Deploy Frontend ───────────────────────────────
-                    echo "Starting task-manager-frontend..."
                     docker run -d \
                       --name ${FRONTEND_CONTAINER} \
                       --network ${NETWORK_NAME} \
@@ -197,35 +156,21 @@ pipeline {
                       -p 3000:80 \
                       ${FRONTEND_IMAGE}:${IMAGE_TAG}
  
-                    echo ""
-                    echo "════════════════════════════════════════"
-                    echo "  ✅  Ashwins Task Manager is LIVE!"
-                    echo "  🌐  App : http://\$(hostname -I | awk '{print \$1}'):3000"
-                    echo "  🔌  API : http://\$(hostname -I | awk '{print \$1}'):5000"
-                    echo "════════════════════════════════════════"
+                    echo "✅ Ashwins Task Manager deployed!"
+                    echo "🌐 App : http://\$(hostname -I | awk '{print \$1}'):3000"
+                    echo "🔌 API : http://\$(hostname -I | awk '{print \$1}'):5000"
                 """
             }
         }
  
-    } // end stages
+    }
  
-    // ─── Post-build ──────────────────────────────────────────────
     post {
         success {
-            echo """
-            ╔══════════════════════════════════════╗
-            ║  ✅  PIPELINE SUCCEEDED              ║
-            ║  ashwins-task-manager build #${BUILD_NUMBER} ║
-            ╚══════════════════════════════════════╝
-            """
+            echo "✅ Pipeline SUCCEEDED — ashwins-task-manager build #${BUILD_NUMBER}"
         }
         failure {
-            echo """
-            ╔══════════════════════════════════════╗
-            ║  ❌  PIPELINE FAILED                 ║
-            ║  ashwins-task-manager build #${BUILD_NUMBER} ║
-            ╚══════════════════════════════════════╝
-            """
+            echo "❌ Pipeline FAILED — ashwins-task-manager build #${BUILD_NUMBER}"
             sh """
                 docker rmi ${BACKEND_IMAGE}:${IMAGE_TAG}  || true
                 docker rmi ${FRONTEND_IMAGE}:${IMAGE_TAG} || true
@@ -237,3 +182,4 @@ pipeline {
     }
  
 }
+ 
