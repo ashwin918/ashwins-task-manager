@@ -25,9 +25,9 @@ pipeline {
  
     stages {
  
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         // STAGE 1 — CHECKOUT
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         stage('Checkout') {
             steps {
                 echo 'Checking out source code from GitHub...'
@@ -36,9 +36,9 @@ pipeline {
             }
         }
  
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         // STAGE 2 — SONARQUBE ANALYSIS
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube analysis...'
@@ -46,7 +46,8 @@ pipeline {
                     def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('SonarQube') {
                         withCredentials([string(credentialsId: "${SONAR_TOKEN_ID}", variable: 'SONAR_TOKEN')]) {
-                            bat """
+                            // returnStatus:true means a non-zero exit won't fail the stage
+                            def result = bat returnStatus: true, script: """
                                 "${scannerHome}\\bin\\sonar-scanner.bat" ^
                                   -Dsonar.projectKey=ashwins-task-manager ^
                                   -Dsonar.projectName="Ashwins Task Manager" ^
@@ -54,15 +55,20 @@ pipeline {
                                   -Dsonar.exclusions=**/node_modules/**,**/build/**,**/*.test.* ^
                                   -Dsonar.token=%SONAR_TOKEN%
                             """
+                            if (result != 0) {
+                                echo "WARNING: SonarQube analysis failed or server unavailable (exit code: ${result}). Continuing pipeline..."
+                            } else {
+                                echo "SonarQube analysis completed successfully."
+                            }
                         }
                     }
                 }
             }
         }
  
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         // STAGE 3 — BUILD DOCKER IMAGES (parallel)
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         stage('Build Docker Images') {
             parallel {
  
@@ -93,9 +99,9 @@ pipeline {
             }
         }
  
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         // STAGE 4 — PUSH TO DOCKERHUB
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
         stage('Push to DockerHub') {
             steps {
                 echo 'Pushing images to DockerHub (ashwinbalaji22778)...'
@@ -115,17 +121,15 @@ pipeline {
             }
         }
  
-        // ═══════════════════════════════════════════════════════
-        // STAGE 5 — DEPLOY via Docker Run
-        // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
+        // STAGE 5 — DEPLOY
+        // ═══════════════════════════════════════════════
         stage('Deploy') {
             steps {
                 echo 'Deploying Ashwins Task Manager...'
  
-                // Create network if it doesn't exist (ignore error if exists)
                 bat "docker network create %NETWORK_NAME% 2>nul || echo Network already exists"
  
-                // Start DB only if not already running
                 bat """
                     docker inspect %DB_CONTAINER% >nul 2>&1 && (
                         echo task-manager-db already running
@@ -143,9 +147,8 @@ pipeline {
                     )
                 """
  
-                // Wait for DB to be ready
                 bat """
-                    echo Waiting for task-manager-db to be ready...
+                    echo Waiting for DB...
                     FOR /L %%i IN (1,1,15) DO (
                         docker exec %DB_CONTAINER% pg_isready -U postgres && GOTO :db_ready
                         timeout /t 3 /nobreak >nul
@@ -154,7 +157,6 @@ pipeline {
                     echo Database is ready!
                 """
  
-                // Stop and remove old app containers
                 bat """
                     docker stop %BACKEND_CONTAINER%  2>nul || echo backend not running
                     docker rm   %BACKEND_CONTAINER%  2>nul || echo backend not found
@@ -162,7 +164,6 @@ pipeline {
                     docker rm   %FRONTEND_CONTAINER% 2>nul || echo frontend not found
                 """
  
-                // Deploy backend
                 bat """
                     docker run -d ^
                       --name %BACKEND_CONTAINER% ^
@@ -180,7 +181,6 @@ pipeline {
                       %BACKEND_IMAGE%:%IMAGE_TAG%
                 """
  
-                // Deploy frontend
                 bat """
                     docker run -d ^
                       --name %FRONTEND_CONTAINER% ^
@@ -190,13 +190,13 @@ pipeline {
                       %FRONTEND_IMAGE%:%IMAGE_TAG%
                 """
  
-                echo "Ashwins Task Manager deployed successfully!"
-                echo "App  -> http://localhost:3000"
-                echo "API  -> http://localhost:5000"
+                echo "Ashwins Task Manager deployed!"
+                echo "App -> http://localhost:3000"
+                echo "API -> http://localhost:5000"
             }
         }
  
-    } // end stages
+    }
  
     post {
         success {
@@ -204,12 +204,14 @@ pipeline {
         }
         failure {
             echo "PIPELINE FAILED - ashwins-task-manager build #${BUILD_NUMBER}"
-            bat "docker rmi %BACKEND_IMAGE%:%IMAGE_TAG%  2>nul || echo cleanup done"
-            bat "docker rmi %FRONTEND_IMAGE%:%IMAGE_TAG% 2>nul || echo cleanup done"
+            // returnStatus:true prevents post block from crashing if image doesn't exist
+            bat returnStatus: true, script: "docker rmi %BACKEND_IMAGE%:%IMAGE_TAG% 2>nul"
+            bat returnStatus: true, script: "docker rmi %FRONTEND_IMAGE%:%IMAGE_TAG% 2>nul"
         }
         always {
-            bat "docker image prune -f 2>nul || echo prune done"
+            bat returnStatus: true, script: "docker image prune -f 2>nul"
         }
     }
  
 }
+ 
