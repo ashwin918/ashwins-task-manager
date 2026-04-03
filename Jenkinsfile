@@ -1,10 +1,11 @@
+
 pipeline {
     agent any
- 
+
     triggers {
         githubPush()
     }
- 
+
     environment {
         BACKEND_IMAGE         = "ashwinbalaji22778/task-manager-backend"
         FRONTEND_IMAGE        = "ashwinbalaji22778/task-manager-frontend"
@@ -15,21 +16,21 @@ pipeline {
         DB_CONTAINER          = "task-manager-db"
         NETWORK_NAME          = "task-manager-net"
         IMAGE_TAG             = "${BUILD_NUMBER}"
- 
+
         // ── Secrets: store in Jenkins > Credentials, never hardcode ──
         JWT_SECRET            = credentials('task-manager-jwt-secret')
         DB_PASSWORD           = credentials('task-manager-db-password')
     }
- 
+
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
     }
- 
+
     stages {
- 
+
         // ─────────────────────────────────────────────────────────────────
         // 1. CHECKOUT
         // ─────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ pipeline {
                 sh 'echo "Branch: $GIT_BRANCH  |  Build: $BUILD_NUMBER"'
             }
         }
- 
+
         // ─────────────────────────────────────────────────────────────────
         // 2. SONARQUBE ANALYSIS  (fixed: sh + Linux sonar-scanner path)
         // ─────────────────────────────────────────────────────────────────
@@ -69,13 +70,13 @@ pipeline {
                 }
             }
         }
- 
+
         // ─────────────────────────────────────────────────────────────────
         // 3. RUN TESTS  (NEW — was missing entirely)
         // ─────────────────────────────────────────────────────────────────
         stage('Run Tests') {
             parallel {
- 
+
                 stage('Backend Tests') {
                     steps {
                         echo 'Running backend tests...'
@@ -86,7 +87,7 @@ pipeline {
                         '''
                     }
                 }
- 
+
                 stage('Frontend Tests') {
                     steps {
                         echo 'Running frontend tests...'
@@ -97,16 +98,16 @@ pipeline {
                         '''
                     }
                 }
- 
+
             }
         }
- 
+
         // ─────────────────────────────────────────────────────────────────
         // 4. BUILD DOCKER IMAGES  (fixed: sh + Linux \ continuators)
         // ─────────────────────────────────────────────────────────────────
         stage('Build Docker Images') {
             parallel {
- 
+
                 stage('Build Backend') {
                     steps {
                         echo 'Building task-manager-backend image...'
@@ -118,7 +119,7 @@ pipeline {
                         """
                     }
                 }
- 
+
                 stage('Build Frontend') {
                     steps {
                         echo 'Building task-manager-frontend image...'
@@ -130,10 +131,10 @@ pipeline {
                         """
                     }
                 }
- 
+
             }
         }
- 
+
         // ─────────────────────────────────────────────────────────────────
         // 5. PUSH TO DOCKERHUB
         // ─────────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ pipeline {
                         def backendImg = docker.image("${BACKEND_IMAGE}:${IMAGE_TAG}")
                         backendImg.push()
                         backendImg.push('latest')
- 
+
                         def frontendImg = docker.image("${FRONTEND_IMAGE}:${IMAGE_TAG}")
                         frontendImg.push()
                         frontendImg.push('latest')
@@ -155,17 +156,17 @@ pipeline {
                 echo "Pushed ${FRONTEND_IMAGE}:${IMAGE_TAG}"
             }
         }
- 
+
         // ─────────────────────────────────────────────────────────────────
         // 6. DEPLOY  (fixed: sh, proper DB wait loop, secrets from creds)
         // ─────────────────────────────────────────────────────────────────
         stage('Deploy') {
             steps {
                 echo 'Deploying Ashwins Task Manager...'
- 
+
                 // Step 1: Create network
                 sh "docker network create ${NETWORK_NAME} 2>/dev/null || echo 'Network already exists'"
- 
+
                 // Step 2: Start DB if not already running
                 sh """
                     if docker inspect ${DB_CONTAINER} > /dev/null 2>&1; then
@@ -183,7 +184,7 @@ pipeline {
                           postgres:15-alpine
                     fi
                 """
- 
+
                 // Step 3: Wait for DB — proper retry loop (fixed: removed ping -n)
                 sh """
                     echo 'Waiting for PostgreSQL to be ready...'
@@ -197,7 +198,7 @@ pipeline {
                     done
                     docker exec ${DB_CONTAINER} pg_isready -U postgres || (echo 'DB never became ready!' && exit 1)
                 """
- 
+
                 // Step 4: Remove old containers
                 sh """
                     docker stop  ${BACKEND_CONTAINER}  2>/dev/null || echo 'backend not running'
@@ -205,7 +206,7 @@ pipeline {
                     docker stop  ${FRONTEND_CONTAINER} 2>/dev/null || echo 'frontend not running'
                     docker rm    ${FRONTEND_CONTAINER} 2>/dev/null || echo 'frontend not found'
                 """
- 
+
                 // Step 5: Start backend (secrets from Jenkins credentials)
                 sh """
                     docker run -d \\
@@ -223,7 +224,7 @@ pipeline {
                       -e JWT_SECRET=\${JWT_SECRET} \\
                       ${BACKEND_IMAGE}:${IMAGE_TAG}
                 """
- 
+
                 // Step 6: Start frontend
                 sh """
                     docker run -d \\
@@ -233,15 +234,15 @@ pipeline {
                       -p 3000:80 \\
                       ${FRONTEND_IMAGE}:${IMAGE_TAG}
                 """
- 
+
                 echo "Deployment complete!"
                 echo "App  -> http://localhost:3000"
                 echo "API  -> http://localhost:5000"
             }
         }
- 
+
     }
- 
+
     // ─────────────────────────────────────────────────────────────────────
     // POST ACTIONS  (fixed: cleanup on success AND failure, not just always)
     // ─────────────────────────────────────────────────────────────────────
@@ -260,5 +261,5 @@ pipeline {
             sh "docker image prune -f 2>/dev/null || true"
         }
     }
- 
+
 }
